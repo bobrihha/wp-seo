@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 import openai
+import requests
 
 
 def _safe_filename(text: str) -> str:
@@ -52,16 +53,40 @@ def generate_cover_image(
     try:
         client = openai.OpenAI(api_key=api_key, base_url=base_url)
         # Prefer base64 response to avoid extra download step.
-        resp = client.images.generate(
-            model=model_name,
-            prompt=prompt,
-            size=size,
-            response_format="b64_json",
-        )
-        b64 = resp.data[0].b64_json  # type: ignore[attr-defined]
-        image_bytes = base64.b64decode(b64)
-        filename = _safe_filename(prompt)
-        return image_bytes, filename
-    except Exception as exc:
-        raise RuntimeError(f"Image generation error: {exc}") from exc
+        try:
+            resp = client.images.generate(
+                model=model_name,
+                prompt=prompt,
+                size=size,
+                response_format="b64_json",
+            )
+        except Exception as exc:
+            msg = str(exc)
+            if "Unknown parameter: 'response_format'" not in msg:
+                raise
+            resp = client.images.generate(
+                model=model_name,
+                prompt=prompt,
+                size=size,
+            )
 
+        first = resp.data[0]
+        filename = _safe_filename(prompt)
+
+        b64 = getattr(first, "b64_json", None)
+        if b64:
+            return base64.b64decode(b64), filename
+
+        url = getattr(first, "url", None)
+        if url:
+            r = requests.get(url, timeout=120)
+            r.raise_for_status()
+            return r.content, filename
+
+        raise RuntimeError("Images API returned no b64_json or url")
+    except Exception as exc:
+        raise RuntimeError(
+            f"Image generation error: {exc}. "
+            "Проверьте, что для изображений используется OpenAI Images API (Base URL обычно https://api.openai.com/v1) "
+            "и модель, которая поддерживает генерацию изображений."
+        ) from exc
