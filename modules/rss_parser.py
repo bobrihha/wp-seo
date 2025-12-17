@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import feedparser
+import requests
 
 from utils.database import is_url_processed
 
@@ -15,6 +16,17 @@ class RssItem:
     published: Optional[str]
     summary: Optional[str]
     source: str
+
+
+def _parse_feed(feed_url: str):
+    """
+    feedparser uses urllib internally (can fail on some macOS Python builds due to missing CA bundle).
+    We fetch via requests (certifi) and then parse the response body.
+    """
+    headers = {"User-Agent": "AI-Content-Hub/1.0 (+https://example.local)"}
+    resp = requests.get(feed_url, timeout=30, headers=headers)
+    resp.raise_for_status()
+    return feedparser.parse(resp.content)
 
 
 def fetch_latest_rss_items(
@@ -29,7 +41,10 @@ def fetch_latest_rss_items(
         if not feed_url:
             continue
 
-        parsed = feedparser.parse(feed_url)
+        try:
+            parsed = _parse_feed(feed_url)
+        except Exception:
+            continue
         for entry in (parsed.entries or [])[: max(0, int(limit_per_feed))]:
             link = (getattr(entry, "link", "") or "").strip()
             if not link:
