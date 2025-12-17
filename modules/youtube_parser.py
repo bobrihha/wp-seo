@@ -51,9 +51,17 @@ def get_transcript(video_id: str) -> str:
     preferred_languages = ["ru", "uk", "en"]
 
     try:
-        segments = YouTubeTranscriptApi.get_transcript(video_id, languages=preferred_languages)
+        if hasattr(YouTubeTranscriptApi, "get_transcript"):
+            segments = YouTubeTranscriptApi.get_transcript(video_id, languages=preferred_languages)
+        else:
+            api = YouTubeTranscriptApi()
+            segments = api.fetch(video_id, languages=preferred_languages).to_raw_data()
     except (TranscriptsDisabled, VideoUnavailable, NoTranscriptFound, CouldNotRetrieveTranscript):
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = (
+            YouTubeTranscriptApi.list_transcripts(video_id)
+            if hasattr(YouTubeTranscriptApi, "list_transcripts")
+            else YouTubeTranscriptApi().list(video_id)
+        )
 
         transcript = None
         for lang in preferred_languages:
@@ -69,7 +77,7 @@ def get_transcript(video_id: str) -> str:
             except NoTranscriptFound:
                 transcript = transcript_list.find_generated_transcript(preferred_languages)
 
-        segments = transcript.fetch()
+        segments = transcript.fetch().to_raw_data()
 
     text = "\n".join((seg.get("text") or "").strip() for seg in segments).strip()
     if not text:
