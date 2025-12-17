@@ -1,9 +1,38 @@
 from __future__ import annotations
 
 import base64
+from urllib.parse import urlparse, urlunparse
 from typing import Any, Dict, Optional
 
 import requests
+from bs4 import BeautifulSoup
+
+
+def _normalize_site_root(url: str) -> str:
+    parsed = urlparse(url.strip())
+    if not parsed.scheme or not parsed.netloc:
+        return url.strip().rstrip("/")
+    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", "")).rstrip("/")
+
+
+def _discover_rest_base(wp_url: str) -> Optional[str]:
+    """
+    Tries to find the REST API base URL from the site's HTML:
+    <link rel="https://api.w.org/" href="https://example.com/wp-json/" />
+    Returns base ending with /wp-json/ (no trailing slash normalization beyond that).
+    """
+    try:
+        resp = requests.get(wp_url, timeout=20, headers={"Accept": "text/html"})
+        if resp.status_code >= 400 or not resp.text:
+            return None
+        soup = BeautifulSoup(resp.text, "html.parser")
+        link = soup.find("link", attrs={"rel": "https://api.w.org/"})
+        href = link.get("href") if link else None
+        if not href:
+            return None
+        return str(href).rstrip("/") + "/"
+    except Exception:
+        return None
 
 
 def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
@@ -43,19 +72,40 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         },
     }
 
-    endpoint = f"{wp_url}/wp-json/wp/v2/posts"
-    response = requests.post(endpoint, json=post_data, headers=headers, timeout=60)
+    # Some sites change REST prefix or have wp_url set to a subpage; try to discover correct base.
+    site_root = _normalize_site_root(wp_url)
+    rest_base = _discover_rest_base(wp_url) or f"{site_root}/wp-json/"
 
-    if response.status_code in (200, 201):
-        data: Optional[Dict[str, Any]]
+    endpoints = [
+        f"{rest_base.rstrip('/')}/wp/v2/posts",
+        f"{site_root}/?rest_route=/wp/v2/posts",
+    ]
+
+    last_response: Optional[requests.Response] = None
+    for endpoint in endpoints:
         try:
-            data = response.json()
+            last_response = requests.post(endpoint, json=post_data, headers=headers, timeout=60)
         except Exception:
-            data = None
+            continue
 
-        if isinstance(data, dict) and data.get("link"):
-            return str(data["link"])
-        return endpoint
+        if last_response.status_code in (200, 201):
+            data: Optional[Dict[str, Any]]
+            try:
+                data = last_response.json()
+            except Exception:
+                data = None
 
-    raise RuntimeError(f"Ошибка публикации WP ({response.status_code}): {response.text}")
+            if isinstance(data, dict) and data.get("link"):
+                return str(data["link"])
+            return endpoint
 
+        if last_response.status_code not in (404,):
+            break
+
+    if last_response is None:
+        raise RuntimeError("Ошибка публикации WP: не удалось выполнить запрос (проверьте URL сайта).")
+
+    raise RuntimeError(
+        f"Ошибка публикации WP ({last_response.status_code}): {last_response.text}\n"
+        f"Endpoint: {last_response.request.url}"
+    )
