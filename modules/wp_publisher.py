@@ -172,12 +172,14 @@ def _upload_media(
 
     files = {"file": (filename, content_bytes, "image/png")}
 
+    last_resp: Optional[requests.Response] = None
     for endpoint in media_endpoints:
         try:
             resp = requests.post(endpoint, headers=media_headers, files=files, timeout=120)
         except Exception:
             continue
 
+        last_resp = resp
         if resp.status_code in (200, 201):
             try:
                 data = resp.json()
@@ -198,4 +200,13 @@ def _upload_media(
 
             return media_id
 
+        # If REST exists but request is forbidden/unauthorized/etc, surface it immediately.
+        if resp.status_code not in (404,):
+            raise RuntimeError(f"WP media upload failed ({resp.status_code}): {resp.text}\nEndpoint: {endpoint}")
+
+    if last_resp is not None:
+        raise RuntimeError(
+            f"WP media upload failed ({last_resp.status_code}): {last_resp.text}\n"
+            f"Endpoint: {last_resp.request.url}"
+        )
     return None
