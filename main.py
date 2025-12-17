@@ -1,0 +1,203 @@
+import streamlit as st
+
+from utils.config_manager import load_settings
+from utils.config_manager import save_settings
+from utils.database import mark_url_processed
+
+from modules.ai_engine import generate_article
+from modules.rss_parser import fetch_latest_rss_items
+from modules.tg_parser import fetch_latest_channel_posts
+from modules.youtube_parser import process_youtube_video
+
+
+def main() -> None:
+    st.set_page_config(page_title="AI Content Hub", layout="wide")
+    st.title("AI Content Hub")
+
+    settings = load_settings()
+
+    if "rss_items" not in st.session_state:
+        st.session_state["rss_items"] = []
+    if "tg_posts" not in st.session_state:
+        st.session_state["tg_posts"] = []
+
+    with st.sidebar:
+        tab_settings, tab_sources, tab_generator = st.tabs(
+            ["Настройки", "Управление источниками", "Генератор"]
+        )
+
+        with tab_settings:
+            st.subheader("AI (OpenAI-compatible)")
+            openai_api_key = st.text_input(
+                "API Key",
+                value=settings.get("openai_api_key", ""),
+                type="password",
+            )
+            base_url = st.text_input(
+                "Base URL",
+                value=settings.get("base_url", "https://api.openai.com/v1"),
+            )
+            model_name = st.text_input(
+                "Model",
+                value=settings.get("model_name", "gpt-4o"),
+            )
+
+            st.subheader("Telegram (Telethon)")
+            telegram_api_id = st.text_input(
+                "Telegram API ID",
+                value=str(settings.get("telegram_api_id", "")),
+                help="Число (api_id) из my.telegram.org",
+            )
+            telegram_api_hash = st.text_input(
+                "Telegram API Hash",
+                value=settings.get("telegram_api_hash", ""),
+                type="password",
+            )
+
+            if st.button("Сохранить", use_container_width=True):
+                settings["openai_api_key"] = openai_api_key.strip()
+                settings["base_url"] = base_url.strip() or "https://api.openai.com/v1"
+                settings["model_name"] = model_name.strip() or "gpt-4o"
+                settings["telegram_api_id"] = telegram_api_id.strip()
+                settings["telegram_api_hash"] = telegram_api_hash.strip()
+                save_settings(settings)
+                st.success("Настройки сохранены.")
+
+        with tab_sources:
+            st.subheader("RSS-ленты")
+            rss_text = st.text_area(
+                "Список RSS (по одному URL на строку)",
+                value="\n".join(settings.get("rss_sources", [])),
+                height=140,
+            )
+
+            st.subheader("Telegram-каналы")
+            tg_text = st.text_area(
+                "Список каналов (по одному username на строку, можно с @)",
+                value="\n".join(settings.get("telegram_channels", [])),
+                height=140,
+            )
+
+            if st.button("Сохранить источники", use_container_width=True):
+                rss_sources = [line.strip() for line in rss_text.splitlines() if line.strip()]
+                telegram_channels = [line.strip() for line in tg_text.splitlines() if line.strip()]
+                settings["rss_sources"] = rss_sources
+                settings["telegram_channels"] = telegram_channels
+                save_settings(settings)
+                st.success("Источники сохранены.")
+
+        with tab_generator:
+            mode = st.radio(
+                "Режим",
+                options=["YouTube", "RSS", "Telegram"],
+                horizontal=False,
+            )
+            st.caption("Генерация всегда идет на русском языке (Markdown).")
+
+    if mode == "YouTube":
+        st.header("YouTube → Статья")
+        url = st.text_input("Ссылка на YouTube-видео", placeholder="https://www.youtube.com/watch?v=...")
+        if st.button("Start", type="primary"):
+            try:
+                article = process_youtube_video(url, settings)
+                st.markdown(article)
+            except Exception as exc:
+                st.error(str(exc))
+
+    elif mode == "RSS":
+        st.header("RSS → Выбор → Генерация")
+        if st.button("Проверить ленты", type="primary"):
+            try:
+                st.session_state["rss_items"] = fetch_latest_rss_items(settings.get("rss_sources", []))
+                if not st.session_state["rss_items"]:
+                    st.info("Новых новостей не найдено (или все уже обработаны).")
+            except Exception as exc:
+                st.error(str(exc))
+
+        rss_items = st.session_state.get("rss_items", [])
+        if rss_items:
+            st.subheader("Новости")
+            selected_links = []
+            for i, item in enumerate(rss_items):
+                label = f"{item.title or '(без заголовка)'} — {item.link}"
+                if st.checkbox(label, key=f"rss_item_{i}"):
+                    selected_links.append(item)
+
+            if st.button("Генерировать выбранное"):
+                for item in selected_links:
+                    try:
+                        prompt = (
+                            "Напиши статью на русском языке по новости из RSS.\n\n"
+                            f"Заголовок: {item.title}\n"
+                            f"Источник: {item.source}\n"
+                            f"Ссылка: {item.link}\n\n"
+                            f"Краткое описание/анонс:\n{item.summary or ''}"
+                        )
+                        article = generate_article(
+                            prompt=prompt,
+                            provider="openai",
+                            api_key=settings.get("openai_api_key", ""),
+                            base_url=settings.get("base_url"),
+                            model_name=settings.get("model_name", "gpt-4o"),
+                        )
+                        mark_url_processed(item.link, source="rss", title=item.title, status="generated")
+                        st.markdown(f"### {item.title or 'Статья'}")
+                        st.markdown(article)
+                        st.divider()
+                    except Exception as exc:
+                        st.error(f"{item.link}: {exc}")
+
+    else:
+        st.header("Telegram → Выбор → Генерация")
+        channels = settings.get("telegram_channels", [])
+        if channels:
+            channel = st.selectbox("Канал", options=channels)
+        else:
+            channel = st.text_input("Канал (username)", placeholder="@channel_username")
+
+        if st.button("Получить посты", type="primary"):
+            try:
+                st.session_state["tg_posts"] = fetch_latest_channel_posts(channel, settings, limit=3)
+                if not st.session_state["tg_posts"]:
+                    st.info("Новых постов не найдено (или все уже обработаны).")
+            except Exception as exc:
+                st.error(str(exc))
+
+        tg_posts = st.session_state.get("tg_posts", [])
+        if tg_posts:
+            st.subheader("Посты")
+            selected_posts = []
+            for i, post in enumerate(tg_posts):
+                preview = post.text.replace("\n", " ")
+                if len(preview) > 120:
+                    preview = preview[:120] + "…"
+                label = f"{post.url} — {preview}"
+                if st.checkbox(label, key=f"tg_post_{i}"):
+                    selected_posts.append(post)
+
+            if st.button("Генерировать выбранное"):
+                for post in selected_posts:
+                    try:
+                        prompt = (
+                            "Сгенерируй статью на русском языке по посту из Telegram-канала. "
+                            "Сохрани смысл, оформи как полноценную статью.\n\n"
+                            f"Ссылка: {post.url}\n\n"
+                            f"Текст поста:\n{post.text}"
+                        )
+                        article = generate_article(
+                            prompt=prompt,
+                            provider="openai",
+                            api_key=settings.get("openai_api_key", ""),
+                            base_url=settings.get("base_url"),
+                            model_name=settings.get("model_name", "gpt-4o"),
+                        )
+                        mark_url_processed(post.url, source="telegram", title=None, status="generated")
+                        st.markdown(f"### {post.url}")
+                        st.markdown(article)
+                        st.divider()
+                    except Exception as exc:
+                        st.error(f"{post.url}: {exc}")
+
+
+if __name__ == "__main__":
+    main()

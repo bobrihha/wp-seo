@@ -1,0 +1,9 @@
+streamlit
+openai
+feedparser
+youtube-transcript-api
+telethon
+python-dotenv
+beautifulsoup4
+requests
+google-generativeai
