@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
 
 from telethon import TelegramClient
@@ -24,7 +25,7 @@ async def _fetch_latest_posts_async(
     api_id: int,
     api_hash: str,
     limit: int = 3,
-    session_name: str = "content_hub",
+    session_path: str = "secrets/telethon.session",
 ) -> List[TgPost]:
     if not channel_username or not channel_username.strip():
         raise ValueError("channel_username is empty")
@@ -36,7 +37,12 @@ async def _fetch_latest_posts_async(
 
     posts: List[TgPost] = []
 
-    async with TelegramClient(session_name, api_id, api_hash) as client:
+    path = Path(session_path)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[1] / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    async with TelegramClient(str(path), api_id, api_hash) as client:
         messages = await client.get_messages(channel_username, limit=limit)
         for msg in messages:
             if not msg or not getattr(msg, "id", None):
@@ -69,13 +75,20 @@ async def _fetch_latest_posts_async(
 def fetch_latest_channel_posts(channel_username: str, settings: dict, *, limit: int = 3) -> List[TgPost]:
     api_id_raw = settings.get("telegram_api_id", "")
     api_hash = settings.get("telegram_api_hash", "")
+    session_path = settings.get("telegram_session_path", "secrets/telethon.session")
 
     try:
         api_id = int(api_id_raw)
     except (TypeError, ValueError) as exc:
         raise ValueError("telegram_api_id must be an integer") from exc
 
-    coro = _fetch_latest_posts_async(channel_username, api_id=api_id, api_hash=api_hash, limit=limit)
+    coro = _fetch_latest_posts_async(
+        channel_username,
+        api_id=api_id,
+        api_hash=api_hash,
+        limit=limit,
+        session_path=session_path,
+    )
     try:
         asyncio.get_running_loop()
     except RuntimeError:

@@ -7,6 +7,11 @@ from utils.database import mark_url_processed
 from modules.wp_publisher import publish_to_wordpress
 from modules.ai_engine import generate_article, SYSTEM_PROMPT
 from modules.rss_parser import fetch_latest_rss_items
+from modules.tg_auth import run_async as run_async_tg
+from modules.tg_auth import is_authorized as tg_is_authorized
+from modules.tg_auth import send_login_code as tg_send_login_code
+from modules.tg_auth import sign_in_with_code as tg_sign_in_with_code
+from modules.tg_auth import sign_in_with_password as tg_sign_in_with_password
 from modules.tg_parser import fetch_latest_channel_posts
 from modules.youtube_parser import process_youtube_video
 
@@ -169,6 +174,64 @@ def main() -> None:
                 value=settings.get("telegram_api_hash", ""),
                 type="password",
             )
+            telegram_session_path = st.text_input(
+                "Telegram session path",
+                value=settings.get("telegram_session_path", "secrets/telethon.session"),
+                help="Файл сессии будет создан автоматически после авторизации.",
+            )
+
+            with st.expander("Telegram авторизация (первый запуск)", expanded=False):
+                col_a, col_b = st.columns([1, 1])
+                try:
+                    authorized = run_async_tg(tg_is_authorized(settings))
+                except Exception:
+                    authorized = False
+                col_a.write(f"Статус: {'авторизован' if authorized else 'не авторизован'}")
+
+                phone = st.text_input(
+                    "Телефон (или bot token)",
+                    value=st.session_state.get("tg_phone", ""),
+                    placeholder="+7XXXXXXXXXX",
+                )
+                if st.button("Отправить код", key="tg_send_code"):
+                    try:
+                        settings["telegram_session_path"] = telegram_session_path.strip() or "secrets/telethon.session"
+                        save_settings(settings)
+                        phone_code_hash = run_async_tg(tg_send_login_code(settings, phone))
+                        st.session_state["tg_phone"] = phone.strip()
+                        st.session_state["tg_phone_code_hash"] = phone_code_hash
+                        st.success("Код отправлен. Введите его ниже.")
+                    except Exception as exc:
+                        st.error(str(exc))
+
+                code = st.text_input("Код из Telegram", value="", key="tg_code")
+                password = st.text_input("Пароль 2FA (если включён)", value="", type="password", key="tg_2fa")
+
+                if st.button("Войти", key="tg_sign_in"):
+                    try:
+                        settings["telegram_session_path"] = telegram_session_path.strip() or "secrets/telethon.session"
+                        save_settings(settings)
+                        ok, next_step = run_async_tg(
+                            tg_sign_in_with_code(
+                                settings,
+                                phone=st.session_state.get("tg_phone", phone),
+                                code=code,
+                                phone_code_hash=st.session_state.get("tg_phone_code_hash", ""),
+                            )
+                        )
+                        if ok:
+                            st.success("Telegram авторизация успешна.")
+                        elif next_step == "password":
+                            if not password:
+                                st.warning("Нужен пароль 2FA. Введите пароль и нажмите «Войти» ещё раз.")
+                            else:
+                                ok2 = run_async_tg(tg_sign_in_with_password(settings, password=password))
+                                if ok2:
+                                    st.success("Telegram авторизация успешна (2FA).")
+                                else:
+                                    st.error("Не удалось авторизоваться (2FA).")
+                    except Exception as exc:
+                        st.error(str(exc))
 
             if st.button("Сохранить", use_container_width=True):
                 settings["wp_url"] = wp_url.strip()
@@ -189,6 +252,7 @@ def main() -> None:
                 settings["gcp_credentials_path"] = gcp_credentials_path.strip()
                 settings["telegram_api_id"] = telegram_api_id.strip()
                 settings["telegram_api_hash"] = telegram_api_hash.strip()
+                settings["telegram_session_path"] = telegram_session_path.strip() or "secrets/telethon.session"
                 save_settings(settings)
                 st.success("Настройки сохранены.")
 

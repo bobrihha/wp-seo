@@ -30,6 +30,7 @@ def _default_settings() -> Dict[str, Any]:
         "telegram_channels": [],
         "telegram_api_id": "",
         "telegram_api_hash": "",
+        "telegram_session_path": "secrets/telethon.session",
     }
 
 
