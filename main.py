@@ -4,6 +4,7 @@ from utils.config_manager import load_settings
 from utils.config_manager import save_settings
 from utils.database import mark_url_processed
 
+from modules.wp_publisher import publish_to_wordpress
 from modules.ai_engine import generate_article
 from modules.rss_parser import fetch_latest_rss_items
 from modules.tg_parser import fetch_latest_channel_posts
@@ -21,12 +22,41 @@ def main() -> None:
     if "tg_posts" not in st.session_state:
         st.session_state["tg_posts"] = []
 
+    def display_and_publish(article_data: dict, *, source_url: str, source_type: str) -> None:
+        seo_title = (article_data.get("seo_title") or "").strip()
+        seo_description = (article_data.get("seo_description") or "").strip()
+        focus_keyword = (article_data.get("focus_keyword") or "").strip()
+        html_content = article_data.get("html_content") or ""
+
+        st.subheader(seo_title or "Без заголовка")
+        c1, c2, c3 = st.columns(3)
+        c1.write("Focus keyword:", focus_keyword)
+        c2.write("SEO title:", seo_title)
+        c3.write("SEO description:", seo_description)
+        st.markdown(html_content, unsafe_allow_html=True)
+
+        if st.button("Опубликовать в WordPress (черновик)", key=f"publish::{source_type}::{source_url}"):
+            link = publish_to_wordpress(settings, article_data)
+            st.success(f"Опубликовано: {link}")
+            mark_url_processed(source_url, source=source_type, title=seo_title or None, status="published")
+
     with st.sidebar:
         tab_settings, tab_sources, tab_generator = st.tabs(
             ["Настройки", "Управление источниками", "Генератор"]
         )
 
         with tab_settings:
+            st.subheader("WordPress")
+            wp_url = st.text_input("Сайт (URL)", value=settings.get("wp_url", ""))
+            wp_user = st.text_input("Логин WP", value=settings.get("wp_user", ""))
+            wp_password = st.text_input(
+                "Пароль приложения WP",
+                type="password",
+                value=settings.get("wp_password", ""),
+                help="WP → Пользователи → Профиль → Пароли приложений",
+            )
+            st.divider()
+
             st.subheader("AI (OpenAI-compatible)")
             openai_api_key = st.text_input(
                 "API Key",
@@ -55,6 +85,9 @@ def main() -> None:
             )
 
             if st.button("Сохранить", use_container_width=True):
+                settings["wp_url"] = wp_url.strip()
+                settings["wp_user"] = wp_user.strip()
+                settings["wp_password"] = wp_password.strip()
                 settings["openai_api_key"] = openai_api_key.strip()
                 settings["base_url"] = base_url.strip() or "https://api.openai.com/v1"
                 settings["model_name"] = model_name.strip() or "gpt-4o"
@@ -100,10 +133,8 @@ def main() -> None:
         if st.button("Start", type="primary"):
             try:
                 article_data = process_youtube_video(url, settings)
-                st.subheader(article_data.get("seo_title", ""))
-                st.write("SEO description:", article_data.get("seo_description", ""))
-                st.write("Focus keyword:", article_data.get("focus_keyword", ""))
-                st.markdown(article_data.get("html_content", ""), unsafe_allow_html=True)
+                mark_url_processed(url, source="youtube", title=article_data.get("seo_title"), status="generated")
+                display_and_publish(article_data, source_url=url, source_type="youtube")
             except Exception as exc:
                 st.error(str(exc))
 
@@ -149,10 +180,7 @@ def main() -> None:
                             title=article_data.get("seo_title") or item.title,
                             status="generated",
                         )
-                        st.markdown(f"### {article_data.get('seo_title') or item.title or 'Статья'}")
-                        st.write("SEO description:", article_data.get("seo_description", ""))
-                        st.write("Focus keyword:", article_data.get("focus_keyword", ""))
-                        st.markdown(article_data.get("html_content", ""), unsafe_allow_html=True)
+                        display_and_publish(article_data, source_url=item.link, source_type="rss")
                         st.divider()
                     except Exception as exc:
                         st.error(f"{item.link}: {exc}")
@@ -207,10 +235,7 @@ def main() -> None:
                             title=article_data.get("seo_title"),
                             status="generated",
                         )
-                        st.markdown(f"### {article_data.get('seo_title') or post.url}")
-                        st.write("SEO description:", article_data.get("seo_description", ""))
-                        st.write("Focus keyword:", article_data.get("focus_keyword", ""))
-                        st.markdown(article_data.get("html_content", ""), unsafe_allow_html=True)
+                        display_and_publish(article_data, source_url=post.url, source_type="telegram")
                         st.divider()
                     except Exception as exc:
                         st.error(f"{post.url}: {exc}")
