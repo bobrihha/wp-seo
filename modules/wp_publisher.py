@@ -90,6 +90,9 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         image_base_url = settings.get("image_base_url") or settings.get("base_url")
         image_model_name = settings.get("image_model_name", "gpt-image-1")
         image_size = settings.get("image_size", "1024x1024")
+        gcp_project_id = (settings.get("gcp_project_id") or "").strip() or None
+        gcp_location = settings.get("gcp_location") or "us-central1"
+        gcp_credentials_path = (settings.get("gcp_credentials_path") or "").strip() or None
 
         image_prompt = build_image_prompt(article_data)
         image_bytes, filename = generate_cover_image(
@@ -99,6 +102,9 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
             model_name=image_model_name,
             size=image_size,
             prompt=image_prompt,
+            gcp_project_id=gcp_project_id,
+            gcp_location=gcp_location,
+            gcp_credentials_path=gcp_credentials_path,
         )
 
         media_id = _upload_media(

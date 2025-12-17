@@ -110,6 +110,16 @@ def main() -> None:
                 "Генерировать и загружать обложку",
                 value=bool(settings.get("image_enabled", True)),
             )
+            image_provider = st.selectbox(
+                "Image provider",
+                options=["openai", "vertex_imagen"],
+                index=["openai", "vertex_imagen"].index(
+                    settings.get("image_provider", "openai")
+                    if settings.get("image_provider", "openai") in {"openai", "vertex_imagen"}
+                    else "openai"
+                ),
+                help="openai = OpenAI Images API; vertex_imagen = Google Vertex AI Imagen",
+            )
             image_api_key = st.text_input(
                 "Image API Key (если пусто — используем основной API Key выше)",
                 value=settings.get("image_api_key", ""),
@@ -132,6 +142,14 @@ def main() -> None:
                     else "1024x1024"
                 ),
             )
+            st.caption("Для Google Imagen: положи JSON ключ на диск и укажи путь ниже (файл не должен попадать в git).")
+            gcp_project_id = st.text_input("GCP project id", value=settings.get("gcp_project_id", ""))
+            gcp_location = st.text_input("GCP location", value=settings.get("gcp_location", "us-central1"))
+            gcp_credentials_path = st.text_input(
+                "Path to service account JSON",
+                value=settings.get("gcp_credentials_path", ""),
+                placeholder="/path/to/service-account.json",
+            )
 
             st.subheader("Telegram (Telethon)")
             telegram_api_id = st.text_input(
@@ -153,11 +171,14 @@ def main() -> None:
                 settings["base_url"] = base_url.strip() or "https://api.openai.com/v1"
                 settings["model_name"] = model_name.strip() or "gpt-4o"
                 settings["image_enabled"] = bool(image_enabled)
-                settings["image_provider"] = "openai"
+                settings["image_provider"] = image_provider
                 settings["image_api_key"] = image_api_key.strip()
                 settings["image_base_url"] = image_base_url.strip() or settings["base_url"]
                 settings["image_model_name"] = image_model_name.strip() or "gpt-image-1"
                 settings["image_size"] = image_size
+                settings["gcp_project_id"] = gcp_project_id.strip()
+                settings["gcp_location"] = gcp_location.strip() or "us-central1"
+                settings["gcp_credentials_path"] = gcp_credentials_path.strip()
                 settings["telegram_api_id"] = telegram_api_id.strip()
                 settings["telegram_api_hash"] = telegram_api_hash.strip()
                 save_settings(settings)
