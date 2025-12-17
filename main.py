@@ -21,6 +21,23 @@ def main() -> None:
         st.session_state["rss_items"] = []
     if "tg_posts" not in st.session_state:
         st.session_state["tg_posts"] = []
+    if "generated_articles" not in st.session_state:
+        st.session_state["generated_articles"] = []
+
+    def _upsert_generated_article(*, source_url: str, source_type: str, article_data: dict) -> None:
+        generated = st.session_state.get("generated_articles", [])
+        for item in generated:
+            if item.get("source_url") == source_url and item.get("source_type") == source_type:
+                item["article_data"] = article_data
+                return
+        generated.append(
+            {
+                "source_url": source_url,
+                "source_type": source_type,
+                "article_data": article_data,
+                "published_link": None,
+            }
+        )
 
     def display_and_publish(article_data: dict, *, source_url: str, source_type: str) -> None:
         seo_title = (article_data.get("seo_title") or "").strip()
@@ -28,17 +45,33 @@ def main() -> None:
         focus_keyword = (article_data.get("focus_keyword") or "").strip()
         html_content = article_data.get("html_content") or ""
 
-        st.subheader(seo_title or "Без заголовка")
-        c1, c2, c3 = st.columns(3)
-        c1.write(f"Focus keyword: {focus_keyword}")
-        c2.write(f"SEO title: {seo_title}")
-        c3.write(f"SEO description: {seo_description}")
-        st.markdown(html_content, unsafe_allow_html=True)
+        with st.expander(seo_title or "Без заголовка", expanded=True):
+            c1, c2, c3 = st.columns(3)
+            c1.write(f"Focus keyword: {focus_keyword}")
+            c2.write(f"SEO title: {seo_title}")
+            c3.write(f"SEO description: {seo_description}")
+            st.markdown(html_content, unsafe_allow_html=True)
 
-        if st.button("Опубликовать в WordPress (черновик)", key=f"publish::{source_type}::{source_url}"):
-            link = publish_to_wordpress(settings, article_data)
-            st.success(f"Опубликовано: {link}")
-            mark_url_processed(source_url, source=source_type, title=seo_title or None, status="published")
+            if st.button(
+                "Опубликовать в WordPress (черновик)",
+                key=f"publish::{source_type}::{source_url}",
+            ):
+                try:
+                    link = publish_to_wordpress(settings, article_data)
+                    st.success(f"Опубликовано: {link}")
+                    for item in st.session_state.get("generated_articles", []):
+                        if item.get("source_url") == source_url and item.get("source_type") == source_type:
+                            item["published_link"] = link
+                            break
+                    mark_url_processed(source_url, source=source_type, title=seo_title or None, status="published")
+                except Exception as exc:
+                    st.error(f"Ошибка публикации: {exc}")
+
+            for item in st.session_state.get("generated_articles", []):
+                if item.get("source_url") == source_url and item.get("source_type") == source_type:
+                    if item.get("published_link"):
+                        st.caption(f"WP draft link: {item['published_link']}")
+                    break
 
     with st.sidebar:
         tab_settings, tab_sources, tab_generator = st.tabs(
@@ -134,7 +167,7 @@ def main() -> None:
             try:
                 article_data = process_youtube_video(url, settings)
                 mark_url_processed(url, source="youtube", title=article_data.get("seo_title"), status="generated")
-                display_and_publish(article_data, source_url=url, source_type="youtube")
+                _upsert_generated_article(source_url=url, source_type="youtube", article_data=article_data)
             except Exception as exc:
                 st.error(str(exc))
 
@@ -180,8 +213,7 @@ def main() -> None:
                             title=article_data.get("seo_title") or item.title,
                             status="generated",
                         )
-                        display_and_publish(article_data, source_url=item.link, source_type="rss")
-                        st.divider()
+                        _upsert_generated_article(source_url=item.link, source_type="rss", article_data=article_data)
                     except Exception as exc:
                         st.error(f"{item.link}: {exc}")
 
@@ -235,10 +267,20 @@ def main() -> None:
                             title=article_data.get("seo_title"),
                             status="generated",
                         )
-                        display_and_publish(article_data, source_url=post.url, source_type="telegram")
-                        st.divider()
+                        _upsert_generated_article(source_url=post.url, source_type="telegram", article_data=article_data)
                     except Exception as exc:
                         st.error(f"{post.url}: {exc}")
+
+    generated = st.session_state.get("generated_articles", [])
+    if generated:
+        st.divider()
+        st.header("Сгенерированные статьи")
+        for item in reversed(generated):
+            display_and_publish(
+                item.get("article_data", {}) or {},
+                source_url=item.get("source_url", ""),
+                source_type=item.get("source_type", "unknown"),
+            )
 
 
 if __name__ == "__main__":
