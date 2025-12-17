@@ -10,6 +10,8 @@ from youtube_transcript_api._errors import (
     VideoUnavailable,
 )
 
+from typing import Any, Dict
+
 from modules.ai_engine import generate_article
 
 
@@ -75,7 +77,7 @@ def get_transcript(video_id: str) -> str:
     return text
 
 
-def process_youtube_video(url: str, settings: dict) -> str:
+def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
     video_id = extract_video_id(url)
     transcript_text = get_transcript(video_id)
 
@@ -114,4 +116,3 @@ def process_youtube_video(url: str, settings: dict) -> str:
         )
 
     raise ValueError(f"Unsupported provider: {provider}")
-

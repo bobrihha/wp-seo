@@ -92,15 +92,18 @@ def main() -> None:
                 options=["YouTube", "RSS", "Telegram"],
                 horizontal=False,
             )
-            st.caption("Генерация всегда идет на русском языке (Markdown).")
+            st.caption("Генерация всегда идет на русском языке (JSON: SEO + HTML контент).")
 
     if mode == "YouTube":
         st.header("YouTube → Статья")
         url = st.text_input("Ссылка на YouTube-видео", placeholder="https://www.youtube.com/watch?v=...")
         if st.button("Start", type="primary"):
             try:
-                article = process_youtube_video(url, settings)
-                st.markdown(article)
+                article_data = process_youtube_video(url, settings)
+                st.subheader(article_data.get("seo_title", ""))
+                st.write("SEO description:", article_data.get("seo_description", ""))
+                st.write("Focus keyword:", article_data.get("focus_keyword", ""))
+                st.markdown(article_data.get("html_content", ""), unsafe_allow_html=True)
             except Exception as exc:
                 st.error(str(exc))
 
@@ -133,16 +136,23 @@ def main() -> None:
                             f"Ссылка: {item.link}\n\n"
                             f"Краткое описание/анонс:\n{item.summary or ''}"
                         )
-                        article = generate_article(
+                        article_data = generate_article(
                             prompt=prompt,
                             provider="openai",
                             api_key=settings.get("openai_api_key", ""),
                             base_url=settings.get("base_url"),
                             model_name=settings.get("model_name", "gpt-4o"),
                         )
-                        mark_url_processed(item.link, source="rss", title=item.title, status="generated")
-                        st.markdown(f"### {item.title or 'Статья'}")
-                        st.markdown(article)
+                        mark_url_processed(
+                            item.link,
+                            source="rss",
+                            title=article_data.get("seo_title") or item.title,
+                            status="generated",
+                        )
+                        st.markdown(f"### {article_data.get('seo_title') or item.title or 'Статья'}")
+                        st.write("SEO description:", article_data.get("seo_description", ""))
+                        st.write("Focus keyword:", article_data.get("focus_keyword", ""))
+                        st.markdown(article_data.get("html_content", ""), unsafe_allow_html=True)
                         st.divider()
                     except Exception as exc:
                         st.error(f"{item.link}: {exc}")
@@ -184,16 +194,23 @@ def main() -> None:
                             f"Ссылка: {post.url}\n\n"
                             f"Текст поста:\n{post.text}"
                         )
-                        article = generate_article(
+                        article_data = generate_article(
                             prompt=prompt,
                             provider="openai",
                             api_key=settings.get("openai_api_key", ""),
                             base_url=settings.get("base_url"),
                             model_name=settings.get("model_name", "gpt-4o"),
                         )
-                        mark_url_processed(post.url, source="telegram", title=None, status="generated")
-                        st.markdown(f"### {post.url}")
-                        st.markdown(article)
+                        mark_url_processed(
+                            post.url,
+                            source="telegram",
+                            title=article_data.get("seo_title"),
+                            status="generated",
+                        )
+                        st.markdown(f"### {article_data.get('seo_title') or post.url}")
+                        st.write("SEO description:", article_data.get("seo_description", ""))
+                        st.write("Focus keyword:", article_data.get("focus_keyword", ""))
+                        st.markdown(article_data.get("html_content", ""), unsafe_allow_html=True)
                         st.divider()
                     except Exception as exc:
                         st.error(f"{post.url}: {exc}")
