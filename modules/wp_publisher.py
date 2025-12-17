@@ -180,10 +180,12 @@ def _upload_media(
     files = {"file": (filename, content_bytes, "image/png")}
 
     last_resp: Optional[requests.Response] = None
+    last_exc: Optional[Exception] = None
     for endpoint in media_endpoints:
         try:
             resp = requests.post(endpoint, headers=media_headers, files=files, timeout=120)
-        except Exception:
+        except Exception as exc:
+            last_exc = exc
             continue
 
         last_resp = resp
@@ -218,4 +220,10 @@ def _upload_media(
             f"WP media upload failed ({last_resp.status_code}): {last_resp.text}\n"
             f"Endpoint: {last_resp.request.url}"
         )
-    raise RuntimeError("WP media upload failed: no response received")
+    if last_exc is not None:
+        raise RuntimeError(
+            "WP media upload failed: request did not complete.\n"
+            f"Last error: {type(last_exc).__name__}: {last_exc}\n"
+            f"Tried endpoints: {', '.join(media_endpoints)}"
+        )
+    raise RuntimeError(f"WP media upload failed: no response received. Tried endpoints: {', '.join(media_endpoints)}")
