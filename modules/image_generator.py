@@ -15,7 +15,8 @@ from google.oauth2 import service_account
 def _safe_filename(text: str) -> str:
     text = (text or "").strip().lower()
     text = re.sub(r"\s+", "-", text)
-    text = re.sub(r"[^a-z0-9а-яё\-]+", "", text, flags=re.IGNORECASE)
+    # HTTP headers are typically latin-1; keep filename ASCII-only to avoid upload failures.
+    text = re.sub(r"[^a-z0-9\-]+", "", text)
     text = text.strip("-") or "cover"
     return f"{text[:80]}.png"
 
