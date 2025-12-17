@@ -7,10 +7,6 @@ from typing import Any, Dict, Optional, Tuple
 import openai
 import requests
 
-import vertexai
-from vertexai.preview.vision_models import ImageGenerationModel
-from google.oauth2 import service_account
-
 
 def _safe_filename(text: str) -> str:
     text = (text or "").strip().lower()
@@ -102,6 +98,10 @@ def generate_cover_image(
             raise ValueError("gcp_project_id is required for vertex_imagen")
         if not gcp_credentials_path:
             raise ValueError("gcp_credentials_path is required for vertex_imagen")
+
+        from google.oauth2 import service_account
+        import vertexai
+        from vertexai.preview.vision_models import ImageGenerationModel
 
         credentials = service_account.Credentials.from_service_account_file(gcp_credentials_path)
         vertexai.init(project=gcp_project_id, location=gcp_location, credentials=credentials)
