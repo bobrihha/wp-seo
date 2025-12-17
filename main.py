@@ -5,7 +5,7 @@ from utils.config_manager import save_settings
 from utils.database import mark_url_processed
 
 from modules.wp_publisher import publish_to_wordpress
-from modules.ai_engine import generate_article
+from modules.ai_engine import generate_article, SYSTEM_PROMPT
 from modules.rss_parser import fetch_latest_rss_items
 from modules.tg_parser import fetch_latest_channel_posts
 from modules.youtube_parser import process_youtube_video
@@ -105,6 +105,13 @@ def main() -> None:
                 value=settings.get("model_name", "gpt-4o"),
             )
 
+            st.subheader("Промпт статьи")
+            article_system_prompt = st.text_area(
+                "System prompt (JSON + HTML + классы)",
+                value=(settings.get("article_system_prompt") or "").strip() or SYSTEM_PROMPT,
+                height=260,
+            )
+
             st.subheader("Изображения (обложка)")
             image_enabled = st.checkbox(
                 "Генерировать и загружать обложку",
@@ -170,6 +177,7 @@ def main() -> None:
                 settings["openai_api_key"] = openai_api_key.strip()
                 settings["base_url"] = base_url.strip() or "https://api.openai.com/v1"
                 settings["model_name"] = model_name.strip() or "gpt-4o"
+                settings["article_system_prompt"] = article_system_prompt.strip()
                 settings["image_enabled"] = bool(image_enabled)
                 settings["image_provider"] = image_provider
                 settings["image_api_key"] = image_api_key.strip()
@@ -261,6 +269,7 @@ def main() -> None:
                             api_key=settings.get("openai_api_key", ""),
                             base_url=settings.get("base_url"),
                             model_name=settings.get("model_name", "gpt-4o"),
+                            system_prompt=settings.get("article_system_prompt"),
                         )
                         mark_url_processed(
                             item.link,
@@ -315,6 +324,7 @@ def main() -> None:
                             api_key=settings.get("openai_api_key", ""),
                             base_url=settings.get("base_url"),
                             model_name=settings.get("model_name", "gpt-4o"),
+                            system_prompt=settings.get("article_system_prompt"),
                         )
                         mark_url_processed(
                             post.url,

@@ -37,6 +37,7 @@ def generate_article(
     api_key: str,
     model_name: str,
     base_url: Optional[str] = None,
+    system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Возвращает словарь: {seo_title, seo_description, focus_keyword, html_content}
@@ -48,6 +49,8 @@ def generate_article(
     if not api_key:
         raise ValueError("api_key is required")
 
+    effective_system_prompt = (system_prompt or "").strip() or SYSTEM_PROMPT
+
     response_text = ""
 
     # --- 1. Логика OpenAI (Perplexity/Kie) ---
@@ -57,7 +60,7 @@ def generate_article(
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": effective_system_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 response_format={"type": "json_object"},
@@ -71,8 +74,8 @@ def generate_article(
     else:
         try:
             genai.configure(api_key=api_key)
-            full_prompt = f"{SYSTEM_PROMPT}\n\nЗАДАЧА:\n{prompt}\n\nВерни только валидный JSON."
-
+            full_prompt = f"{effective_system_prompt}\n\nЗАДАЧА:\n{prompt}\n\nВерни только валидный JSON."
+            
             try:
                 model = genai.GenerativeModel(model_name=model_name)
                 response = model.generate_content(full_prompt)

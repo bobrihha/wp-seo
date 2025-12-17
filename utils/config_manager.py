@@ -16,6 +16,7 @@ def _default_settings() -> Dict[str, Any]:
         "openai_api_key": "",
         "base_url": "https://api.openai.com/v1",
         "model_name": "gpt-4o",
+        "article_system_prompt": "",
         "image_enabled": True,
         "image_provider": "openai",
         "image_api_key": "",

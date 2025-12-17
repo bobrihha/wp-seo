@@ -106,6 +106,7 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
             api_key=api_key,
             base_url=base_url,
             model_name=model_name,
+            system_prompt=settings.get("article_system_prompt"),
         )
 
     if provider == "gemini":
@@ -121,6 +122,7 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
             provider="gemini",
             api_key=api_key,
             model_name=model_name,
+            system_prompt=settings.get("article_system_prompt"),
         )
 
     raise ValueError(f"Unsupported provider: {provider}")
