@@ -8,3 +8,6 @@ venv/
 .streamlit/
 content_hub.sqlite3
 content_hub.sqlite3-*
+settings.json
+*.session
+*.session-journal

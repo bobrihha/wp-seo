@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from modules.image_generator import build_image_prompt, generate_cover_image
+
 
 def _normalize_site_root(url: str) -> str:
     parsed = urlparse(url.strip())
@@ -61,7 +63,7 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
     focus_keyword = article_data.get("focus_keyword", "") or ""
     html_content = article_data.get("html_content", "") or ""
 
-    post_data = {
+    post_data: Dict[str, Any] = {
         "title": seo_title,
         "content": html_content,
         "status": "draft",
@@ -80,6 +82,35 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         f"{rest_base.rstrip('/')}/wp/v2/posts",
         f"{site_root}/?rest_route=/wp/v2/posts",
     ]
+
+    # Optional: generate + upload featured image
+    if settings.get("image_enabled", True):
+        image_provider = settings.get("image_provider", "openai")
+        image_api_key = settings.get("image_api_key") or settings.get("openai_api_key", "")
+        image_base_url = settings.get("image_base_url") or settings.get("base_url")
+        image_model_name = settings.get("image_model_name", "gpt-image-1")
+        image_size = settings.get("image_size", "1024x1024")
+
+        image_prompt = build_image_prompt(article_data)
+        image_bytes, filename = generate_cover_image(
+            provider=image_provider,
+            api_key=image_api_key,
+            base_url=image_base_url,
+            model_name=image_model_name,
+            size=image_size,
+            prompt=image_prompt,
+        )
+
+        media_id = _upload_media(
+            rest_base=rest_base,
+            site_root=site_root,
+            headers=headers,
+            filename=filename,
+            content_bytes=image_bytes,
+            alt_text=seo_title,
+        )
+        if media_id:
+            post_data["featured_media"] = media_id
 
     last_response: Optional[requests.Response] = None
     for endpoint in endpoints:
@@ -109,3 +140,56 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         f"Ошибка публикации WP ({last_response.status_code}): {last_response.text}\n"
         f"Endpoint: {last_response.request.url}"
     )
+
+
+def _upload_media(
+    *,
+    rest_base: str,
+    site_root: str,
+    headers: Dict[str, str],
+    filename: str,
+    content_bytes: bytes,
+    alt_text: str = "",
+) -> Optional[int]:
+    """
+    Uploads media via WordPress REST API and returns attachment id.
+    Requires user capability 'upload_files'.
+    """
+    media_endpoints = [
+        f"{rest_base.rstrip('/')}/wp/v2/media",
+        f"{site_root}/?rest_route=/wp/v2/media",
+    ]
+
+    media_headers = dict(headers)
+    media_headers.pop("Content-Type", None)
+    media_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+    files = {"file": (filename, content_bytes, "image/png")}
+
+    for endpoint in media_endpoints:
+        try:
+            resp = requests.post(endpoint, headers=media_headers, files=files, timeout=120)
+        except Exception:
+            continue
+
+        if resp.status_code in (200, 201):
+            try:
+                data = resp.json()
+                media_id = int(data.get("id"))
+            except Exception:
+                media_id = None
+
+            if media_id and alt_text:
+                try:
+                    requests.post(
+                        f"{rest_base.rstrip('/')}/wp/v2/media/{media_id}",
+                        headers=headers,
+                        json={"alt_text": alt_text},
+                        timeout=60,
+                    )
+                except Exception:
+                    pass
+
+            return media_id
+
+    return None

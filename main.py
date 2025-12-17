@@ -105,6 +105,34 @@ def main() -> None:
                 value=settings.get("model_name", "gpt-4o"),
             )
 
+            st.subheader("Изображения (обложка)")
+            image_enabled = st.checkbox(
+                "Генерировать и загружать обложку",
+                value=bool(settings.get("image_enabled", True)),
+            )
+            image_api_key = st.text_input(
+                "Image API Key (если пусто — используем основной API Key выше)",
+                value=settings.get("image_api_key", ""),
+                type="password",
+            )
+            image_base_url = st.text_input(
+                "Image Base URL",
+                value=settings.get("image_base_url", settings.get("base_url", "https://api.openai.com/v1")),
+            )
+            image_model_name = st.text_input(
+                "Image Model",
+                value=settings.get("image_model_name", "gpt-image-1"),
+            )
+            image_size = st.selectbox(
+                "Image size",
+                options=["1024x1024", "1024x1792", "1792x1024"],
+                index=["1024x1024", "1024x1792", "1792x1024"].index(
+                    settings.get("image_size", "1024x1024")
+                    if settings.get("image_size", "1024x1024") in {"1024x1024", "1024x1792", "1792x1024"}
+                    else "1024x1024"
+                ),
+            )
+
             st.subheader("Telegram (Telethon)")
             telegram_api_id = st.text_input(
                 "Telegram API ID",
@@ -124,6 +152,12 @@ def main() -> None:
                 settings["openai_api_key"] = openai_api_key.strip()
                 settings["base_url"] = base_url.strip() or "https://api.openai.com/v1"
                 settings["model_name"] = model_name.strip() or "gpt-4o"
+                settings["image_enabled"] = bool(image_enabled)
+                settings["image_provider"] = "openai"
+                settings["image_api_key"] = image_api_key.strip()
+                settings["image_base_url"] = image_base_url.strip() or settings["base_url"]
+                settings["image_model_name"] = image_model_name.strip() or "gpt-image-1"
+                settings["image_size"] = image_size
                 settings["telegram_api_id"] = telegram_api_id.strip()
                 settings["telegram_api_hash"] = telegram_api_hash.strip()
                 save_settings(settings)

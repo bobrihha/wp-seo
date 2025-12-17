@@ -1,0 +1,18 @@
+{
+  "wp_url": "",
+  "wp_user": "",
+  "wp_password": "",
+  "openai_api_key": "",
+  "base_url": "https://api.openai.com/v1",
+  "model_name": "gpt-4o",
+  "image_enabled": true,
+  "image_provider": "openai",
+  "image_api_key": "",
+  "image_base_url": "https://api.openai.com/v1",
+  "image_model_name": "gpt-image-1",
+  "image_size": "1024x1024",
+  "rss_sources": [],
+  "telegram_channels": [],
+  "telegram_api_id": "",
+  "telegram_api_hash": ""
+}
