@@ -30,9 +30,9 @@ def main() -> None:
 
         st.subheader(seo_title or "Без заголовка")
         c1, c2, c3 = st.columns(3)
-        c1.write("Focus keyword:", focus_keyword)
-        c2.write("SEO title:", seo_title)
-        c3.write("SEO description:", seo_description)
+        c1.write(f"Focus keyword: {focus_keyword}")
+        c2.write(f"SEO title: {seo_title}")
+        c3.write(f"SEO description: {seo_description}")
         st.markdown(html_content, unsafe_allow_html=True)
 
         if st.button("Опубликовать в WordPress (черновик)", key=f"publish::{source_type}::{source_url}"):
