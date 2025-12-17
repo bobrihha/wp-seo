@@ -107,7 +107,7 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
             gcp_credentials_path=gcp_credentials_path,
         )
 
-        media_id = _upload_media(
+        media_id, media_url = _upload_media(
             rest_base=rest_base,
             site_root=site_root,
             headers=headers,
@@ -117,6 +117,13 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         )
         if media_id:
             post_data["featured_media"] = media_id
+            if media_url and isinstance(post_data.get("content"), str) and not post_data["content"].lstrip().startswith(
+                "<img"
+            ):
+                post_data["content"] = (
+                    f"<p><img class=\"ai-cover\" src=\"{media_url}\" alt=\"{seo_title}\" /></p>\n"
+                    + post_data["content"]
+                )
 
     last_response: Optional[requests.Response] = None
     for endpoint in endpoints:
@@ -156,7 +163,7 @@ def _upload_media(
     filename: str,
     content_bytes: bytes,
     alt_text: str = "",
-) -> Optional[int]:
+) -> tuple[int, Optional[str]]:
     """
     Uploads media via WordPress REST API and returns attachment id.
     Requires user capability 'upload_files'.
@@ -184,8 +191,10 @@ def _upload_media(
             try:
                 data = resp.json()
                 media_id = int(data.get("id"))
+                media_url = data.get("source_url") or data.get("guid", {}).get("rendered")
             except Exception:
                 media_id = None
+                media_url = None
 
             if media_id and alt_text:
                 try:
@@ -198,7 +207,7 @@ def _upload_media(
                 except Exception:
                     pass
 
-            return media_id
+            return media_id, str(media_url) if media_url else None
 
         # If REST exists but request is forbidden/unauthorized/etc, surface it immediately.
         if resp.status_code not in (404,):
@@ -209,4 +218,4 @@ def _upload_media(
             f"WP media upload failed ({last_resp.status_code}): {last_resp.text}\n"
             f"Endpoint: {last_resp.request.url}"
         )
-    return None
+    raise RuntimeError("WP media upload failed: no response received")
