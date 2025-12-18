@@ -5,7 +5,7 @@ from utils.config_manager import save_settings
 from utils.database import mark_url_processed
 
 from modules.wp_publisher import publish_to_wordpress
-from modules.ai_engine import generate_article, SYSTEM_PROMPT
+from modules.ai_engine import generate_article, SYSTEM_PROMPT, inject_ad_block
 from modules.rss_parser import fetch_latest_rss_items
 from modules.tg_auth import run_async as run_async_tg
 from modules.tg_auth import is_authorized as tg_is_authorized
@@ -110,6 +110,12 @@ def main() -> None:
                 value=settings.get("model_name", "gpt-4o"),
             )
 
+            st.subheader("YouTube настройки")
+            youtube_embed_enabled = st.checkbox(
+                "Встраивать видео (embed) в начало статьи",
+                value=bool(settings.get("youtube_embed_enabled", True)),
+            )
+
             st.subheader("Промпт статьи")
             article_system_prompt = st.text_area(
                 "System prompt (JSON + HTML + классы)",
@@ -178,6 +184,20 @@ def main() -> None:
                 "Telegram session path",
                 value=settings.get("telegram_session_path", "secrets/telethon.session"),
                 help="Файл сессии будет создан автоматически после авторизации.",
+            )
+
+            st.subheader("Реклама (Ad Injection)")
+            ad_code = st.text_area(
+                "HTML-код рекламы (AdSense / Яндекс)",
+                value=settings.get("ad_code", ""),
+                height=100,
+                help="Оставьте пустым, если реклама не нужна.",
+            )
+            ad_paragraph = st.number_input(
+                "Вставлять после параграфа №",
+                min_value=1,
+                value=int(settings.get("ad_paragraph", 3)),
+                help="3 означает: реклама будет после 3-го абзаца текста.",
             )
 
             with st.expander("Telegram авторизация (первый запуск)", expanded=False):
@@ -253,6 +273,9 @@ def main() -> None:
                 settings["telegram_api_id"] = telegram_api_id.strip()
                 settings["telegram_api_hash"] = telegram_api_hash.strip()
                 settings["telegram_session_path"] = telegram_session_path.strip() or "secrets/telethon.session"
+                settings["ad_code"] = ad_code.strip()
+                settings["ad_paragraph"] = int(ad_paragraph)
+                settings["youtube_embed_enabled"] = bool(youtube_embed_enabled)
                 save_settings(settings)
                 st.success("Настройки сохранены.")
 
@@ -293,6 +316,16 @@ def main() -> None:
         if st.button("Start", type="primary"):
             try:
                 article_data = process_youtube_video(url, settings)
+
+                # Вставка рекламы (если настроена)
+                ad_c = settings.get("ad_code", "")
+                if ad_c and article_data.get("html_content"):
+                    article_data["html_content"] = inject_ad_block(
+                        article_data["html_content"],
+                        ad_c,
+                        int(settings.get("ad_paragraph", 3))
+                    )
+
                 mark_url_processed(url, source="youtube", title=article_data.get("seo_title"), status="generated")
                 _upsert_generated_article(source_url=url, source_type="youtube", article_data=article_data)
             except Exception as exc:
@@ -335,6 +368,17 @@ def main() -> None:
                             model_name=settings.get("model_name", "gpt-4o"),
                             system_prompt=settings.get("article_system_prompt"),
                         )
+
+
+                        # Вставка рекламы
+                        ad_c = settings.get("ad_code", "")
+                        if ad_c and article_data.get("html_content"):
+                            article_data["html_content"] = inject_ad_block(
+                                article_data["html_content"],
+                                ad_c,
+                                int(settings.get("ad_paragraph", 3))
+                            )
+
                         mark_url_processed(
                             item.link,
                             source="rss",
@@ -390,6 +434,17 @@ def main() -> None:
                             model_name=settings.get("model_name", "gpt-4o"),
                             system_prompt=settings.get("article_system_prompt"),
                         )
+
+
+                        # Вставка рекламы
+                        ad_c = settings.get("ad_code", "")
+                        if ad_c and article_data.get("html_content"):
+                            article_data["html_content"] = inject_ad_block(
+                                article_data["html_content"],
+                                ad_c,
+                                int(settings.get("ad_paragraph", 3))
+                            )
+
                         mark_url_processed(
                             post.url,
                             source="telegram",

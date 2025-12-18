@@ -95,10 +95,10 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
         api_key = settings.get("openai_api_key", "")
         base_url = settings.get("base_url")
         model_name = settings.get("model_name", "gpt-4o")
-        return generate_article(
+        result = generate_article(
             prompt=(
                 "Сгенерируй статью на русском языке по этому транскрипту YouTube-видео. "
-                "Сохрани факты, убери мусорные повторы, оформи читабельно.\n\n"
+                "Сохрани факты, убери мусорные повторы, оформи читабельно.\n"
                 f"URL: {url}\n\n"
                 f"Транскрипт:\n{transcript_text}"
             ),
@@ -109,13 +109,29 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
             system_prompt=settings.get("article_system_prompt"),
         )
 
+        if settings.get("youtube_embed_enabled", True):
+            # Prepend WP Embed block
+            embed_block = (
+                f'<!-- wp:embed {{"url":"{url}","type":"video","providerNameSlug":"youtube",'
+                f'"responsive":true,"className":"wp-embed-aspect-16-9 wp-has-aspect-ratio"}} -->\n'
+                f'<figure class="wp-block-embed is-type-video is-provider-youtube '
+                f'wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio">'
+                f'<div class="wp-block-embed__wrapper">\n{url}\n</div></figure>\n<!-- /wp:embed -->\n\n'
+            )
+            if result.get("html_content"):
+                result["html_content"] = embed_block + result["html_content"]
+            else:
+                result["html_content"] = embed_block
+            
+        return result
+
     if provider == "gemini":
         api_key = settings.get("gemini_api_key", "")
         model_name = settings.get("gemini_model_name") or settings.get("model_name", "")
-        return generate_article(
+        result = generate_article(
             prompt=(
                 "Сгенерируй статью на русском языке по этому транскрипту YouTube-видео. "
-                "Сохрани факты, убери мусорные повторы, оформи читабельно.\n\n"
+                "Сохрани факты, убери мусорные повторы, оформи читабельно.\n"
                 f"URL: {url}\n\n"
                 f"Транскрипт:\n{transcript_text}"
             ),
@@ -124,5 +140,21 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
             model_name=model_name,
             system_prompt=settings.get("article_system_prompt"),
         )
+
+        if settings.get("youtube_embed_enabled", True):
+            # Prepend WP Embed block
+            embed_block = (
+                f'<!-- wp:embed {{"url":"{url}","type":"video","providerNameSlug":"youtube",'
+                f'"responsive":true,"className":"wp-embed-aspect-16-9 wp-has-aspect-ratio"}} -->\n'
+                f'<figure class="wp-block-embed is-type-video is-provider-youtube '
+                f'wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio">'
+                f'<div class="wp-block-embed__wrapper">\n{url}\n</div></figure>\n<!-- /wp:embed -->\n\n'
+            )
+            if result.get("html_content"):
+                result["html_content"] = embed_block + result["html_content"]
+            else:
+                result["html_content"] = embed_block
+            
+        return result
 
     raise ValueError(f"Unsupported provider: {provider}")

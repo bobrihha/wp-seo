@@ -2,10 +2,40 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 import google.generativeai as genai
 import openai
+
+
+def inject_ad_block(html: str, ad_code: str, paragraph_index: int = 3) -> str:
+    """
+    Вставляет ad_code после paragraph_index-го параграфа (<p>...</p>) в html.
+    Если параграфов меньше, вставляет в конец.
+    """
+    if not html or not ad_code:
+        return html
+    
+    # Поиск всех закрывающих тегов </p>
+    # Используем re.IGNORECASE на всякий случай
+    matches = list(re.finditer(r"</p>", html, flags=re.IGNORECASE))
+    
+    if len(matches) < paragraph_index:
+        # Если параграфов мало, просто добавим в конец
+        return html + "\n" + ad_code
+        
+    # Находим позицию вставки: сразу после закрывающего тега N-го параграфа
+    # paragraph_index - 1, т.к. список matches начинается с 0 (1-й параграф = индекс 0)
+    # Но пользователь вводит 1-based индекс? Обычно да. Пусть 3 означает "после 3-го".
+    idx = paragraph_index - 1
+    if idx < 0: 
+         idx = 0
+         
+    pos = matches[idx].end()
+    
+    new_html = html[:pos] + "\n" + ad_code + "\n" + html[pos:]
+    return new_html
+
 
 # --- ПРОМПТ С ДИЗАЙН-СИСТЕМОЙ ---
 SYSTEM_PROMPT = (

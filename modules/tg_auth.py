@@ -33,8 +33,11 @@ async def _get_client(settings: dict) -> TelegramClient:
 
 async def is_authorized(settings: dict) -> bool:
     client = await _get_client(settings)
-    async with client:
+    await client.connect()
+    try:
         return await client.is_user_authorized()
+    finally:
+        await client.disconnect()
 
 
 async def send_login_code(settings: dict, phone: str) -> str:
@@ -43,12 +46,15 @@ async def send_login_code(settings: dict, phone: str) -> str:
         raise ValueError("phone is required")
 
     client = await _get_client(settings)
-    async with client:
+    await client.connect()
+    try:
         try:
             sent = await client.send_code_request(phone)
             return sent.phone_code_hash
         except PhoneNumberInvalidError as exc:
             raise ValueError("Invalid phone number") from exc
+    finally:
+        await client.disconnect()
 
 
 async def sign_in_with_code(settings: dict, phone: str, code: str, phone_code_hash: str) -> Tuple[bool, Optional[str]]:
@@ -63,7 +69,8 @@ async def sign_in_with_code(settings: dict, phone: str, code: str, phone_code_ha
         raise ValueError("phone, code and phone_code_hash are required")
 
     client = await _get_client(settings)
-    async with client:
+    await client.connect()
+    try:
         try:
             await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
             return True, None
@@ -71,6 +78,8 @@ async def sign_in_with_code(settings: dict, phone: str, code: str, phone_code_ha
             raise ValueError("Invalid code") from exc
         except SessionPasswordNeededError:
             return False, "password"
+    finally:
+        await client.disconnect()
 
 
 async def sign_in_with_password(settings: dict, password: str) -> bool:
@@ -79,9 +88,12 @@ async def sign_in_with_password(settings: dict, password: str) -> bool:
         raise ValueError("password is required")
 
     client = await _get_client(settings)
-    async with client:
+    await client.connect()
+    try:
         await client.sign_in(password=password)
         return await client.is_user_authorized()
+    finally:
+        await client.disconnect()
 
 
 def run_async(coro):

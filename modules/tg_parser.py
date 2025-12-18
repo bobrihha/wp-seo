@@ -42,7 +42,9 @@ async def _fetch_latest_posts_async(
         path = Path(__file__).resolve().parents[1] / path
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    async with TelegramClient(str(path), api_id, api_hash) as client:
+    client = TelegramClient(str(path), api_id, api_hash)
+    await client.connect()
+    try:
         messages = await client.get_messages(channel_username, limit=limit)
         for msg in messages:
             if not msg or not getattr(msg, "id", None):
@@ -68,6 +70,8 @@ async def _fetch_latest_posts_async(
             )
 
             mark_url_processed(url, source="telegram", title=None, status="seen")
+    finally:
+        await client.disconnect()
 
     return posts
 

@@ -1,0 +1,74 @@
+/* --- AI Content Hub Styles --- */
+
+/* 1. Блок WARNING / ALERT */
+.ai-alert {
+    background-color: #fff3cd;
+    border-left: 5px solid #ffc107;
+    padding: 15px 20px;
+    margin: 20px 0;
+    border-radius: 4px;
+    color: #856404;
+    font-size: 1.05em;
+}
+
+/* 2. Блок SUMMARY (Выводы) */
+.ai-summary {
+    background-color: #d4edda;
+    border-left: 5px solid #28a745;
+    padding: 15px 20px;
+    margin: 20px 0;
+    border-radius: 4px;
+    color: #155724;
+}
+
+/* 3. Списки (Плюсы/Минусы) */
+ul.ai-list {
+    list-style-type: none; /* Убираем стандартные точки */
+    padding-left: 0;
+}
+
+ul.ai-list li {
+    position: relative;
+    padding-left: 30px;
+    margin-bottom: 10px;
+}
+
+ul.ai-list li::before {
+    content: "✔"; /* Или другой маркер */
+    position: absolute;
+    left: 0;
+    color: #28a745;
+    font-weight: bold;
+}
+
+/* 4. Таблицы */
+table.ai-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+table.ai-table th, 
+table.ai-table td {
+    border: 1px solid #ddd;
+    padding: 12px;
+    text-align: left;
+}
+
+table.ai-table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+table.ai-table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* 5. Картинка-обложка (если класс используется) */
+img.ai-cover {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
