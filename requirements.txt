@@ -8,3 +8,4 @@ beautifulsoup4
 requests
 google-generativeai
 google-cloud-aiplatform
+pillow

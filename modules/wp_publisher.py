@@ -63,10 +63,15 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
     focus_keyword = article_data.get("focus_keyword", "") or ""
     html_content = article_data.get("html_content", "") or ""
 
+    wp_post_status = (settings.get("wp_post_status") or "draft").strip().lower()
+    allowed_statuses = {"draft", "publish", "private", "pending", "future"}
+    if wp_post_status not in allowed_statuses:
+        wp_post_status = "draft"
+
     post_data: Dict[str, Any] = {
         "title": seo_title,
         "content": html_content,
-        "status": "draft",
+        "status": wp_post_status,
         "meta": {
             "_yoast_wpseo_title": seo_title,
             "_yoast_wpseo_metadesc": seo_description,
@@ -83,10 +88,46 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         f"{site_root}/?rest_route=/wp/v2/posts",
     ]
 
+    def _resolve_image_api_key(provider: str) -> str:
+        provider = (provider or "").strip()
+        if provider == "openai":
+            return (
+                (settings.get("openai_image_api_key") or "").strip()
+                or (settings.get("image_api_key") or "").strip()
+                or (settings.get("openai_api_key") or "").strip()
+            )
+        if provider == "flux":
+            return (settings.get("flux_image_api_key") or "").strip()
+        return (settings.get("image_api_key") or "").strip()
+
+    def _build_paragraph_image_prompt(*, paragraph_text: str, index: int) -> str:
+        title = (article_data.get("seo_title") or "").strip()
+        keyword = (article_data.get("focus_keyword") or "").strip()
+        text = (paragraph_text or "").strip()
+        if len(text) > 600:
+            text = text[:600].rsplit(" ", 1)[0] + "…"
+        template = (
+            (settings.get("image_prompt_template") or "").strip() if settings.get("image_prompt_use_custom") else ""
+        )
+        if template:
+            try:
+                base = template.format(title=title, keyword=keyword).strip()
+            except Exception:
+                base = template
+            return f"{base}\n\nПараграф #{index + 1}: {text}".strip()
+        return (
+            "Сгенерируй иллюстрацию для параграфа статьи (без текста на изображении). "
+            "Стиль: современная веб-иллюстрация/рендер, чистые формы, аккуратные детали, высокий контраст. "
+            "Без логотипов, водяных знаков и узнаваемых брендов.\n"
+            f"Статья: {title}\n"
+            f"Ключевое слово: {keyword}\n"
+            f"Параграф #{index + 1}: {text}"
+        )
+
     # Optional: generate + upload featured image
     if settings.get("image_enabled", True):
         image_provider = settings.get("image_provider", "openai")
-        image_api_key = settings.get("image_api_key") or settings.get("openai_api_key", "")
+        image_api_key = _resolve_image_api_key(image_provider)
         image_base_url = settings.get("image_base_url") or settings.get("base_url")
         image_model_name = settings.get("image_model_name", "gpt-image-1")
         image_size = settings.get("image_size", "1024x1024")
@@ -94,13 +135,15 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
         gcp_location = settings.get("gcp_location") or "us-central1"
         gcp_credentials_path = (settings.get("gcp_credentials_path") or "").strip() or None
 
-        image_prompt = build_image_prompt(article_data)
+        template = settings.get("image_prompt_template") if settings.get("image_prompt_use_custom") else None
+        image_prompt = build_image_prompt(article_data, template=template)
         image_bytes, filename = generate_cover_image(
             provider=image_provider,
             api_key=image_api_key,
             base_url=image_base_url,
             model_name=image_model_name,
             size=image_size,
+            force_aspect_crop=bool(settings.get("image_force_aspect_crop", False)),
             prompt=image_prompt,
             gcp_project_id=gcp_project_id,
             gcp_location=gcp_location,
@@ -126,6 +169,75 @@ def publish_to_wordpress(settings: dict, article_data: Dict[str, Any]) -> str:
                 )
 
     last_response: Optional[requests.Response] = None
+
+    # Optional: generate + upload inline images for paragraphs (done on publish, not in UI)
+    if settings.get("image_per_paragraph_enabled", False) and isinstance(post_data.get("content"), str):
+        try:
+            max_images = int(settings.get("image_per_paragraph_max", 3) or 0)
+        except (TypeError, ValueError):
+            max_images = 0
+
+        if max_images > 0:
+            image_provider = settings.get("image_provider", "openai")
+            image_api_key = _resolve_image_api_key(image_provider)
+            image_base_url = settings.get("image_base_url") or settings.get("base_url")
+            image_model_name = settings.get("image_model_name", "gpt-image-1")
+            image_size = settings.get("image_size", "1024x1024")
+            gcp_project_id = (settings.get("gcp_project_id") or "").strip() or None
+            gcp_location = settings.get("gcp_location") or "us-central1"
+            gcp_credentials_path = (settings.get("gcp_credentials_path") or "").strip() or None
+
+            soup = BeautifulSoup(post_data["content"], "html.parser")
+            paragraphs = soup.find_all("p")
+
+            inserted = 0
+            for idx, p in enumerate(paragraphs):
+                if inserted >= max_images:
+                    break
+                if p.find("img") is not None:
+                    continue
+                text = p.get_text(" ", strip=True)
+                if not text or len(text) < 60:
+                    continue
+
+                prompt = _build_paragraph_image_prompt(paragraph_text=text, index=idx)
+                image_bytes, filename = generate_cover_image(
+                    provider=image_provider,
+                    api_key=image_api_key,
+                    base_url=image_base_url,
+                    model_name=image_model_name,
+                    size=image_size,
+                    force_aspect_crop=bool(settings.get("image_force_aspect_crop", False)),
+                    prompt=prompt,
+                    gcp_project_id=gcp_project_id,
+                    gcp_location=gcp_location,
+                    gcp_credentials_path=gcp_credentials_path,
+                )
+                media_id, media_url = _upload_media(
+                    rest_base=rest_base,
+                    site_root=site_root,
+                    headers=headers,
+                    filename=filename,
+                    content_bytes=image_bytes,
+                    alt_text=seo_title,
+                )
+                if not media_id or not media_url:
+                    continue
+
+                img_tag = soup.new_tag("img")
+                img_tag["class"] = "ai-inline"
+                img_tag["src"] = media_url
+                img_tag["alt"] = seo_title
+                wrapper = soup.new_tag("p")
+                wrapper.append(img_tag)
+                p.insert_after(wrapper)
+                inserted += 1
+
+            if soup.body is not None:
+                post_data["content"] = soup.body.decode_contents()
+            else:
+                post_data["content"] = str(soup)
+
     for endpoint in endpoints:
         try:
             last_response = requests.post(endpoint, json=post_data, headers=headers, timeout=60)

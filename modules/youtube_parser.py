@@ -12,7 +12,7 @@ from youtube_transcript_api._errors import (
 
 from typing import Any, Dict
 
-from modules.ai_engine import generate_article
+from modules.ai_engine import build_article_system_prompt, generate_article
 
 
 def extract_video_id(url: str) -> str:
@@ -97,7 +97,7 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
         model_name = settings.get("model_name", "gpt-4o")
         result = generate_article(
             prompt=(
-                "Сгенерируй статью на русском языке по этому транскрипту YouTube-видео. "
+                "Сгенерируй статью по этому транскрипту YouTube-видео. "
                 "Сохрани факты, убери мусорные повторы, оформи читабельно.\n"
                 f"URL: {url}\n\n"
                 f"Транскрипт:\n{transcript_text}"
@@ -106,7 +106,7 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
             api_key=api_key,
             base_url=base_url,
             model_name=model_name,
-            system_prompt=settings.get("article_system_prompt"),
+            system_prompt=build_article_system_prompt(settings, seed=url),
         )
 
         if settings.get("youtube_embed_enabled", True):
@@ -130,7 +130,7 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
         model_name = settings.get("gemini_model_name") or settings.get("model_name", "")
         result = generate_article(
             prompt=(
-                "Сгенерируй статью на русском языке по этому транскрипту YouTube-видео. "
+                "Сгенерируй статью по этому транскрипту YouTube-видео. "
                 "Сохрани факты, убери мусорные повторы, оформи читабельно.\n"
                 f"URL: {url}\n\n"
                 f"Транскрипт:\n{transcript_text}"
@@ -138,7 +138,7 @@ def process_youtube_video(url: str, settings: dict) -> Dict[str, Any]:
             provider="gemini",
             api_key=api_key,
             model_name=model_name,
-            system_prompt=settings.get("article_system_prompt"),
+            system_prompt=build_article_system_prompt(settings, seed=url),
         )
 
         if settings.get("youtube_embed_enabled", True):

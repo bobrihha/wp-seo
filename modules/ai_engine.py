@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any, Tuple
 import google.generativeai as genai
 import openai
 
+from modules.content_profile import resolve_profile
+
 
 def inject_ad_block(html: str, ad_code: str, paragraph_index: int = 3) -> str:
     """
@@ -144,3 +146,13 @@ def generate_article(
             "focus_keyword": "",
             "html_content": response_text,
         }
+
+
+def build_article_system_prompt(settings: Dict[str, object], *, seed: str) -> str:
+    """
+    Собирает итоговый system prompt из базового (settings.article_system_prompt или SYSTEM_PROMPT)
+    плюс блок настроек стиля/формата/языка/объёма.
+    """
+    base = (str(settings.get("article_system_prompt", "")) or "").strip() or SYSTEM_PROMPT
+    profile = resolve_profile(settings, seed=seed)
+    return f"{base}\n\n{profile.prompt_block()}\n"

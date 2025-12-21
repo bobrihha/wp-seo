@@ -66,9 +66,21 @@ table.ai-table tr:nth-child(even) {
 
 /* 5. Картинка-обложка (если класс используется) */
 img.ai-cover {
-    max-width: 100%;
+    width: 100%;
+    max-width: 820px; /* ограничение, чтобы обложка не была "во всю ширину" */
     height: auto;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
+    display: block;
+    margin: 0 auto 20px;
+}
+
+/* 6. Картинки внутри статьи (авто-вставка) */
+img.ai-inline {
+    width: 100%;
+    max-width: 720px;
+    height: auto;
+    border-radius: 8px;
+    display: block;
+    margin: 16px auto;
 }
