@@ -10,3 +10,13 @@ services:
       - ./content_hub.sqlite3:/app/content_hub.sqlite3
       - ./secrets:/app/secrets
     restart: unless-stopped
+
+  autopilot:
+    build: .
+    container_name: wp-seo-autopilot
+    command: ["python3", "autopilot.py", "--daemon"]
+    volumes:
+      - ./settings.json:/app/settings.json
+      - ./content_hub.sqlite3:/app/content_hub.sqlite3
+      - ./secrets:/app/secrets
+    restart: unless-stopped

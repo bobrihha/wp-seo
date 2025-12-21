@@ -17,6 +17,7 @@ from modules.tg_auth import sign_in_with_code as tg_sign_in_with_code
 from modules.tg_auth import sign_in_with_password as tg_sign_in_with_password
 from modules.tg_parser import fetch_latest_channel_posts
 from modules.youtube_parser import process_youtube_video
+from modules.autopilot import run_autopilot_once
 
 
 def main() -> None:
@@ -157,8 +158,8 @@ def main() -> None:
                     break
 
     with st.sidebar:
-        tab_settings, tab_sources, tab_generator = st.tabs(
-            ["Настройки", "Управление источниками", "Генератор"]
+        tab_settings, tab_sources, tab_generator, tab_autopilot = st.tabs(
+            ["Настройки", "Управление источниками", "Генератор", "Автопилот"]
         )
 
         with tab_settings:
@@ -575,6 +576,13 @@ def main() -> None:
                 height=140,
             )
 
+            st.subheader("YouTube-каналы (для автопилота)")
+            yt_channels_text = st.text_area(
+                "Список каналов (по одному на строку: @handle или URL)",
+                value="\n".join(settings.get("youtube_channels", [])),
+                height=120,
+            )
+
             st.subheader("Telegram-каналы")
             tg_text = st.text_area(
                 "Список каналов (по одному username на строку, можно с @)",
@@ -584,8 +592,10 @@ def main() -> None:
 
             if st.button("Сохранить источники", use_container_width=True):
                 rss_sources = [line.strip() for line in rss_text.splitlines() if line.strip()]
+                yt_channels = [line.strip() for line in yt_channels_text.splitlines() if line.strip()]
                 telegram_channels = [line.strip() for line in tg_text.splitlines() if line.strip()]
                 settings["rss_sources"] = rss_sources
+                settings["youtube_channels"] = yt_channels
                 settings["telegram_channels"] = telegram_channels
                 save_settings(settings)
                 st.success("Источники сохранены.")
@@ -597,6 +607,163 @@ def main() -> None:
                 horizontal=False,
             )
             st.caption("Генерация: JSON (SEO + HTML). Язык/стиль/объём задаются в «Настройки» → «Контент».")
+
+        with tab_autopilot:
+            st.subheader("Автопилот")
+            st.caption("Основной режим: запускайте `python3 autopilot.py --daemon` на сервере. Здесь можно настроить и нажать «Запустить сейчас».")
+
+            autopilot_enabled = st.checkbox(
+                "Автопилот включён",
+                value=bool(settings.get("autopilot_enabled", False)),
+            )
+            st.divider()
+
+            c1, c2, c3 = st.columns(3)
+            autopilot_rss_enabled = c1.checkbox(
+                "RSS",
+                value=bool(settings.get("autopilot_rss_enabled", True)),
+            )
+            autopilot_youtube_enabled = c2.checkbox(
+                "YouTube (каналы)",
+                value=bool(settings.get("autopilot_youtube_enabled", False)),
+            )
+            autopilot_telegram_enabled = c3.checkbox(
+                "Telegram",
+                value=bool(settings.get("autopilot_telegram_enabled", False)),
+            )
+
+            st.divider()
+            st.subheader("Режимы публикации")
+            modes = ["off", "draft", "publish"]
+            autopilot_rss_mode = st.selectbox(
+                "RSS",
+                options=modes,
+                index=modes.index(settings.get("autopilot_rss_mode", "draft") if settings.get("autopilot_rss_mode", "draft") in set(modes) else "draft"),
+                format_func=lambda v: {"off": "Остановить", "draft": "В черновики", "publish": "Публиковать"}.get(v, v),
+            )
+            autopilot_youtube_mode = st.selectbox(
+                "YouTube",
+                options=modes,
+                index=modes.index(settings.get("autopilot_youtube_mode", "draft") if settings.get("autopilot_youtube_mode", "draft") in set(modes) else "draft"),
+                format_func=lambda v: {"off": "Остановить", "draft": "В черновики", "publish": "Публиковать"}.get(v, v),
+            )
+            autopilot_telegram_mode = st.selectbox(
+                "Telegram",
+                options=modes,
+                index=modes.index(settings.get("autopilot_telegram_mode", "draft") if settings.get("autopilot_telegram_mode", "draft") in set(modes) else "draft"),
+                format_func=lambda v: {"off": "Остановить", "draft": "В черновики", "publish": "Публиковать"}.get(v, v),
+            )
+
+            st.divider()
+            st.subheader("Частота проверки (минуты)")
+            col_a, col_b, col_c = st.columns(3)
+            autopilot_rss_poll_minutes = col_a.number_input(
+                "RSS",
+                min_value=1,
+                value=int(settings.get("autopilot_rss_poll_minutes", 10) or 10),
+                step=1,
+            )
+            autopilot_youtube_poll_minutes = col_b.number_input(
+                "YouTube",
+                min_value=1,
+                value=int(settings.get("autopilot_youtube_poll_minutes", 10) or 10),
+                step=1,
+            )
+            autopilot_telegram_poll_minutes = col_c.number_input(
+                "Telegram",
+                min_value=1,
+                value=int(settings.get("autopilot_telegram_poll_minutes", 10) or 10),
+                step=1,
+            )
+
+            st.divider()
+            st.subheader("Лимиты")
+            col_l1, col_l2 = st.columns(2)
+            autopilot_daily_limit_total = col_l1.number_input(
+                "Публикаций/сутки (всего)",
+                min_value=0,
+                value=int(settings.get("autopilot_daily_limit_total", 10) or 10),
+                step=1,
+            )
+            autopilot_max_per_run = col_l2.number_input(
+                "Максимум за один запуск",
+                min_value=0,
+                value=int(settings.get("autopilot_max_per_run", 3) or 3),
+                step=1,
+            )
+            col_s1, col_s2, col_s3 = st.columns(3)
+            autopilot_rss_limit_per_feed = col_s1.number_input(
+                "RSS: брать из ленты",
+                min_value=1,
+                value=int(settings.get("autopilot_rss_limit_per_feed", 3) or 3),
+                step=1,
+            )
+            autopilot_youtube_limit_per_channel = col_s2.number_input(
+                "YouTube: брать с канала",
+                min_value=1,
+                value=int(settings.get("autopilot_youtube_limit_per_channel", 3) or 3),
+                step=1,
+            )
+            autopilot_telegram_limit_per_channel = col_s3.number_input(
+                "Telegram: брать с канала",
+                min_value=1,
+                value=int(settings.get("autopilot_telegram_limit_per_channel", 3) or 3),
+                step=1,
+            )
+
+            st.divider()
+            st.subheader("YouTube API")
+            youtube_api_key = st.text_input(
+                "YouTube Data API Key",
+                value=settings.get("youtube_api_key", ""),
+                type="password",
+                help="Нужен для автопилота по каналам.",
+            )
+
+            c_save, c_run = st.columns(2)
+            if c_save.button("Сохранить автопилот", use_container_width=True):
+                settings["autopilot_enabled"] = bool(autopilot_enabled)
+                settings["autopilot_rss_enabled"] = bool(autopilot_rss_enabled)
+                settings["autopilot_youtube_enabled"] = bool(autopilot_youtube_enabled)
+                settings["autopilot_telegram_enabled"] = bool(autopilot_telegram_enabled)
+                settings["autopilot_rss_mode"] = autopilot_rss_mode
+                settings["autopilot_youtube_mode"] = autopilot_youtube_mode
+                settings["autopilot_telegram_mode"] = autopilot_telegram_mode
+                settings["autopilot_rss_poll_minutes"] = int(autopilot_rss_poll_minutes)
+                settings["autopilot_youtube_poll_minutes"] = int(autopilot_youtube_poll_minutes)
+                settings["autopilot_telegram_poll_minutes"] = int(autopilot_telegram_poll_minutes)
+                settings["autopilot_daily_limit_total"] = int(autopilot_daily_limit_total)
+                settings["autopilot_max_per_run"] = int(autopilot_max_per_run)
+                settings["autopilot_rss_limit_per_feed"] = int(autopilot_rss_limit_per_feed)
+                settings["autopilot_youtube_limit_per_channel"] = int(autopilot_youtube_limit_per_channel)
+                settings["autopilot_telegram_limit_per_channel"] = int(autopilot_telegram_limit_per_channel)
+                settings["youtube_api_key"] = youtube_api_key.strip()
+                save_settings(settings)
+                st.success("Настройки автопилота сохранены.")
+
+            if c_run.button("Запустить сейчас", use_container_width=True):
+                sources = []
+                if autopilot_rss_enabled and autopilot_rss_mode != "off":
+                    sources.append("rss")
+                if autopilot_youtube_enabled and autopilot_youtube_mode != "off":
+                    sources.append("youtube")
+                if autopilot_telegram_enabled and autopilot_telegram_mode != "off":
+                    sources.append("telegram")
+                try:
+                    result = run_autopilot_once(settings, sources=sources)
+                    st.session_state["autopilot_last_result"] = result
+                    st.success(
+                        f"Готово: processed={result.processed}, published={result.published}, draft={result.drafted}, errors={result.errors}"
+                    )
+                except Exception as exc:
+                    st.error(str(exc))
+
+            last = st.session_state.get("autopilot_last_result")
+            if last:
+                st.divider()
+                st.subheader("Лог последнего запуска")
+                for line in getattr(last, "details", [])[-50:]:
+                    st.write(line)
 
     if mode == "YouTube":
         st.header("YouTube → Статья")

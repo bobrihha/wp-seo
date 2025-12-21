@@ -46,6 +46,7 @@ def _default_settings() -> Dict[str, Any]:
         "gcp_location": "us-central1",
         "gcp_credentials_path": "",
         "rss_sources": [],
+        "youtube_channels": [],
         "telegram_channels": [],
         "telegram_api_id": "",
         "telegram_api_hash": "",
@@ -53,6 +54,24 @@ def _default_settings() -> Dict[str, Any]:
         "ad_code": "",
         "ad_paragraph": 3,
         "youtube_embed_enabled": True,
+
+        # --- Autopilot ---
+        "autopilot_enabled": False,
+        "autopilot_rss_enabled": True,
+        "autopilot_youtube_enabled": False,
+        "autopilot_telegram_enabled": False,
+        "autopilot_rss_mode": "draft",
+        "autopilot_youtube_mode": "draft",
+        "autopilot_telegram_mode": "draft",
+        "autopilot_rss_poll_minutes": 10,
+        "autopilot_youtube_poll_minutes": 10,
+        "autopilot_telegram_poll_minutes": 10,
+        "autopilot_daily_limit_total": 10,
+        "autopilot_max_per_run": 5,
+        "autopilot_rss_limit_per_feed": 3,
+        "autopilot_youtube_limit_per_channel": 3,
+        "autopilot_telegram_limit_per_channel": 3,
+        "youtube_api_key": "",
     }
 
 

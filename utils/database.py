@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterable, Set
 
 
 DB_PATH = Path(__file__).resolve().parents[1] / "content_hub.sqlite3"
@@ -67,3 +67,32 @@ def mark_url_processed(url: str, *, source: str, title: Optional[str] = None, st
             (url, source, title, status, now),
         )
 
+
+def count_processed_since(
+    *,
+    since_iso: str,
+    statuses: Iterable[str],
+    source: Optional[str] = None,
+) -> int:
+    init_db()
+    statuses_set: Set[str] = {str(s) for s in statuses if str(s)}
+    if not statuses_set:
+        return 0
+
+    placeholders = ",".join(["?"] * len(statuses_set))
+    params = [since_iso, *sorted(statuses_set)]
+    query = f"SELECT COUNT(1) FROM processed_links WHERE created_at >= ? AND status IN ({placeholders})"
+
+    if source:
+        query += " AND source = ?"
+        params.append(source)
+
+    with _connect() as conn:
+        row = conn.execute(query, tuple(params)).fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def count_processed_today(*, statuses: Iterable[str], source: Optional[str] = None) -> int:
+    now = datetime.now(timezone.utc)
+    start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc).isoformat()
+    return count_processed_since(since_iso=start, statuses=statuses, source=source)
