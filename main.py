@@ -20,11 +20,17 @@ from modules.youtube_parser import process_youtube_video
 from modules.autopilot import run_autopilot_once
 
 
+def is_demo_mode() -> bool:
+    """Check if running in demo mode (called from app.py with demo code)."""
+    return st.session_state.get("demo_code") is not None and not st.session_state.get("is_admin", False)
+
+
 def main() -> None:
     st.set_page_config(page_title="AI Content Hub", layout="wide")
     st.title("AI Content Hub")
 
     settings = load_settings()
+    demo_mode = is_demo_mode()
 
     if "rss_items" not in st.session_state:
         st.session_state["rss_items"] = []
@@ -131,7 +137,10 @@ def main() -> None:
             c3.write(f"SEO description: {seo_description}")
             st.markdown(html_content, unsafe_allow_html=True)
 
-            if st.button(
+            # In demo mode, show info instead of publish button
+            if demo_mode:
+                st.info("🔒 Публикация в WordPress недоступна в демо-режиме. Напишите @CACHALOT_ai для полной версии.")
+            elif st.button(
                 publish_label,
                 key=f"publish::{source_type}::{source_url}",
             ):
@@ -163,106 +172,133 @@ def main() -> None:
         )
 
         with tab_settings:
-            tab_keys, tab_images, tab_other = st.tabs(["Ключи", "Изображения", "Настройки"])
+            # In demo mode, hide the "Ключи" tab with API keys
+            if demo_mode:
+                st.info("🔒 API ключи настроены администратором")
+                tab_images, tab_other = st.tabs(["Изображения", "Настройки"])
+                tab_keys = None  # No keys tab in demo mode
+                # Fallback values from settings for demo mode
+                telegram_session_path = settings.get("telegram_session_path", "secrets/telethon.session")
+                wp_url = settings.get("wp_url", "")
+                wp_user = settings.get("wp_user", "")
+                wp_password = settings.get("wp_password", "")
+                wp_post_status = settings.get("wp_post_status", "draft")
+                openai_api_key = settings.get("openai_api_key", "")
+                base_url = settings.get("base_url", "https://api.openai.com/v1")
+                model_name = settings.get("model_name", "gpt-4o")
+                gemini_api_key = settings.get("gemini_api_key", "")
+                gemini_model_name = settings.get("gemini_model_name", "")
+                openai_image_api_key = settings.get("openai_image_api_key", "")
+                image_base_url = settings.get("image_base_url", "")
+                gcp_project_id = settings.get("gcp_project_id", "")
+                gcp_location = settings.get("gcp_location", "us-central1")
+                gcp_credentials_path = settings.get("gcp_credentials_path", "")
+                flux_image_api_key = settings.get("flux_image_api_key", "")
+                flux_image_base_url = settings.get("flux_image_base_url", "")
+                telegram_api_id = settings.get("telegram_api_id", "")
+                telegram_api_hash = settings.get("telegram_api_hash", "")
+            else:
+                tab_keys, tab_images, tab_other = st.tabs(["Ключи", "Изображения", "Настройки"])
 
-            with tab_keys:
-                st.subheader("WordPress")
-                wp_url = st.text_input("Сайт (URL)", value=settings.get("wp_url", ""))
-                wp_user = st.text_input("Логин WP", value=settings.get("wp_user", ""))
-                wp_password = st.text_input(
-                    "Пароль приложения WP",
-                    type="password",
-                    value=settings.get("wp_password", ""),
-                    help="WP → Пользователи → Профиль → Пароли приложений",
-                )
-                wp_post_status = st.selectbox(
-                    "Статус записи в WordPress",
-                    options=["draft", "publish"],
-                    index=["draft", "publish"].index(
-                        settings.get("wp_post_status", "draft")
-                        if settings.get("wp_post_status", "draft") in {"draft", "publish"}
-                        else "draft"
-                    ),
-                    format_func=lambda v: {"draft": "Черновик", "publish": "Опубликовать сразу"}.get(v, v),
-                )
-                st.divider()
+            if tab_keys is not None:
+                with tab_keys:
+                    st.subheader("WordPress")
+                    wp_url = st.text_input("Сайт (URL)", value=settings.get("wp_url", ""))
+                    wp_user = st.text_input("Логин WP", value=settings.get("wp_user", ""))
+                    wp_password = st.text_input(
+                        "Пароль приложения WP",
+                        type="password",
+                        value=settings.get("wp_password", ""),
+                        help="WP → Пользователи → Профиль → Пароли приложений",
+                    )
+                    wp_post_status = st.selectbox(
+                        "Статус записи в WordPress",
+                        options=["draft", "publish"],
+                        index=["draft", "publish"].index(
+                            settings.get("wp_post_status", "draft")
+                            if settings.get("wp_post_status", "draft") in {"draft", "publish"}
+                            else "draft"
+                        ),
+                        format_func=lambda v: {"draft": "Черновик", "publish": "Опубликовать сразу"}.get(v, v),
+                    )
+                    st.divider()
 
-                st.subheader("AI (OpenAI-compatible) — текст")
-                openai_api_key = st.text_input(
-                    "API Key",
-                    value=settings.get("openai_api_key", ""),
-                    type="password",
-                )
-                base_url = st.text_input(
-                    "Base URL",
-                    value=settings.get("base_url", "https://api.openai.com/v1"),
-                )
-                model_name = st.text_input(
-                    "Model",
-                    value=settings.get("model_name", "gpt-4o"),
-                )
-                st.divider()
+                    st.subheader("AI (OpenAI-compatible) — текст")
+                    openai_api_key = st.text_input(
+                        "API Key",
+                        value=settings.get("openai_api_key", ""),
+                        type="password",
+                    )
+                    base_url = st.text_input(
+                        "Base URL",
+                        value=settings.get("base_url", "https://api.openai.com/v1"),
+                    )
+                    model_name = st.text_input(
+                        "Model",
+                        value=settings.get("model_name", "gpt-4o"),
+                    )
+                    st.divider()
 
-                st.subheader("AI (Gemini) — ключи (опционально)")
-                gemini_api_key = st.text_input(
-                    "Gemini API Key",
-                    value=settings.get("gemini_api_key", ""),
-                    type="password",
-                )
-                gemini_model_name = st.text_input(
-                    "Gemini model (для текста, если используете)",
-                    value=settings.get("gemini_model_name", ""),
-                    placeholder="например: gemini-1.5-pro",
-                )
-                st.divider()
+                    st.subheader("AI (Gemini) — ключи (опционально)")
+                    gemini_api_key = st.text_input(
+                        "Gemini API Key",
+                        value=settings.get("gemini_api_key", ""),
+                        type="password",
+                    )
+                    gemini_model_name = st.text_input(
+                        "Gemini model (для текста, если используете)",
+                        value=settings.get("gemini_model_name", ""),
+                        placeholder="например: gemini-1.5-pro",
+                    )
+                    st.divider()
 
-                st.subheader("Ключи генерации изображений")
-                st.caption("Можно заполнить все сразу — потом просто переключать модель в вкладке «Изображения».")
-                openai_image_api_key = st.text_input(
-                    "OpenAI Images API Key (если пусто — используем общий OpenAI API Key)",
-                    value=settings.get("openai_image_api_key", settings.get("image_api_key", "")),
-                    type="password",
-                )
-                image_base_url = st.text_input(
-                    "OpenAI Images Base URL",
-                    value=settings.get("image_base_url", settings.get("base_url", "https://api.openai.com/v1")),
-                )
-                st.caption("Google Vertex Imagen: положи JSON ключ на диск и укажи путь (файл не должен попадать в git).")
-                gcp_project_id = st.text_input("GCP project id", value=settings.get("gcp_project_id", ""))
-                gcp_location = st.text_input("GCP location", value=settings.get("gcp_location", "us-central1"))
-                gcp_credentials_path = st.text_input(
-                    "Path to service account JSON",
-                    value=settings.get("gcp_credentials_path", ""),
-                    placeholder="/path/to/service-account.json",
-                )
-                flux_image_api_key = st.text_input(
-                    "Flux API Key (на будущее)",
-                    value=settings.get("flux_image_api_key", ""),
-                    type="password",
-                )
-                flux_image_base_url = st.text_input(
-                    "Flux Base URL (на будущее)",
-                    value=settings.get("flux_image_base_url", ""),
-                    placeholder="https://...",
-                )
-                st.divider()
+                    st.subheader("Ключи генерации изображений")
+                    st.caption("Можно заполнить все сразу — потом просто переключать модель в вкладке «Изображения».")
+                    openai_image_api_key = st.text_input(
+                        "OpenAI Images API Key (если пусто — используем общий OpenAI API Key)",
+                        value=settings.get("openai_image_api_key", settings.get("image_api_key", "")),
+                        type="password",
+                    )
+                    image_base_url = st.text_input(
+                        "OpenAI Images Base URL",
+                        value=settings.get("image_base_url", settings.get("base_url", "https://api.openai.com/v1")),
+                    )
+                    st.caption("Google Vertex Imagen: положи JSON ключ на диск и укажи путь (файл не должен попадать в git).")
+                    gcp_project_id = st.text_input("GCP project id", value=settings.get("gcp_project_id", ""))
+                    gcp_location = st.text_input("GCP location", value=settings.get("gcp_location", "us-central1"))
+                    gcp_credentials_path = st.text_input(
+                        "Path to service account JSON",
+                        value=settings.get("gcp_credentials_path", ""),
+                        placeholder="/path/to/service-account.json",
+                    )
+                    flux_image_api_key = st.text_input(
+                        "Flux API Key (на будущее)",
+                        value=settings.get("flux_image_api_key", ""),
+                        type="password",
+                    )
+                    flux_image_base_url = st.text_input(
+                        "Flux Base URL (на будущее)",
+                        value=settings.get("flux_image_base_url", ""),
+                        placeholder="https://...",
+                    )
+                    st.divider()
 
-                st.subheader("Telegram (Telethon)")
-                telegram_api_id = st.text_input(
-                    "Telegram API ID",
-                    value=str(settings.get("telegram_api_id", "")),
-                    help="Число (api_id) из my.telegram.org",
-                )
-                telegram_api_hash = st.text_input(
-                    "Telegram API Hash",
-                    value=settings.get("telegram_api_hash", ""),
-                    type="password",
-                )
-                telegram_session_path = st.text_input(
-                    "Telegram session path",
-                    value=settings.get("telegram_session_path", "secrets/telethon.session"),
-                    help="Файл сессии будет создан автоматически после авторизации.",
-                )
+                    st.subheader("Telegram (Telethon)")
+                    telegram_api_id = st.text_input(
+                        "Telegram API ID",
+                        value=str(settings.get("telegram_api_id", "")),
+                        help="Число (api_id) из my.telegram.org",
+                    )
+                    telegram_api_hash = st.text_input(
+                        "Telegram API Hash",
+                        value=settings.get("telegram_api_hash", ""),
+                        type="password",
+                    )
+                    telegram_session_path = st.text_input(
+                        "Telegram session path",
+                        value=settings.get("telegram_session_path", "secrets/telethon.session"),
+                        help="Файл сессии будет создан автоматически после авторизации.",
+                    )
 
             with tab_images:
                 st.subheader("Генерация изображений")

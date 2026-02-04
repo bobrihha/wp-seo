@@ -4,7 +4,7 @@ services:
     build: .
     container_name: wp-seo
     ports:
-      - "8501:8501"
+      - "8503:8501"
     volumes:
       - ./settings.json:/app/settings.json
       - ./content_hub.sqlite3:/app/content_hub.sqlite3
@@ -14,7 +14,7 @@ services:
   autopilot:
     build: .
     container_name: wp-seo-autopilot
-    command: ["python3", "autopilot.py", "--daemon"]
+    command: [ "python3", "autopilot.py", "--daemon" ]
     volumes:
       - ./settings.json:/app/settings.json
       - ./content_hub.sqlite3:/app/content_hub.sqlite3
