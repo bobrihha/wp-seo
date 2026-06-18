@@ -13,3 +13,16 @@ settings.json
 *.session-journal
 secrets/
 *.pem
+.env.*
+*.key
+*credentials*.json
+service_account.json
+secret.key
+*.db
+*.sqlite
+*.sqlite3
+node_modules/
+*.log
+!.env.example
+!.env.sample
+!.env.template
